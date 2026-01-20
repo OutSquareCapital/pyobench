@@ -72,7 +72,13 @@ def plot_performance_evolution(
     return (
         Data.db.results.scan()
         .filter(nw.col("category") == category)
-        .pipe(lambda lf: lf.filter(nw.col("size") == size) if size else lf)
+        .pipe(
+            lambda lf: lf.filter(nw.col("size") == size)
+            if size
+            else lf.with_columns(
+                nw.col("median").median().over("name", "git_hash").alias("median")
+            )
+        )
         .select("name", "git_hash", "median")
         .with_columns(
             nw.col("git_hash").str.slice(0, 7).alias("commit_short"),
