@@ -60,7 +60,7 @@ def _try_collect(lf: pl.LazyFrame) -> pc.Result[pl.DataFrame, str]:
 def _get_git_hash() -> pc.Result[str, Exception]:
     """Get current git commit hash."""
     try:
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             ["git", "rev-parse", "HEAD"],  # noqa: S607
             capture_output=True,
             text=True,
