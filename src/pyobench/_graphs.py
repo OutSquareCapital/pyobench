@@ -81,14 +81,13 @@ def plot_heatmap_by_commit(
             else lf
         )
         .pipe(lambda lf: lf.filter(nw.col("size") == size) if size else lf)
-        .select("category", "name", "git_hash", "median", "timestamp")
+        .select("category", "name", "git_hash", "median")
         .with_columns(
             nw.concat_str([nw.col("category"), nw.col("name")], separator=" - ").alias(
                 "benchmark"
             ),
             nw.col("git_hash").str.slice(0, 7).alias("commit_short"),
         )
-        .sort("timestamp")
         .to_native()
         .pl()
         .pipe(
