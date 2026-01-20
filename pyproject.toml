@@ -65,6 +65,7 @@
 [dependency-groups]
     dev = [
     "plotly-stubs>=0.1.2",
+    "pydoclint>=0.8.3",
     "pytest>=9.0.2",
     "ruff>=0.14.13",
 ]

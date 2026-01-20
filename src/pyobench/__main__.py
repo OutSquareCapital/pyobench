@@ -4,10 +4,12 @@ from typing import Annotated
 
 import typer
 
+from . import _graphs
 from ._pipeline import Data, run_pipeline
 from ._registery import CONSOLE
 
 app = typer.Typer(help="Benchmarks for pyochain developments.")
+app.add_typer(_graphs.app, name="viz", help="Visualization commands")
 
 
 @app.command()

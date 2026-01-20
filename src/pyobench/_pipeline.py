@@ -1,13 +1,12 @@
 """Benchmarks for pyochain developments."""
 
 import subprocess
-from datetime import UTC, datetime
 
 import framelib as fl
 import polars as pl
 import pyochain as pc
 
-from ._registery import BENCHMARKS, Row, collect_raw_timings
+from ._registery import REGISTERY, Row, collect_raw_timings
 
 
 class BenchmarksSchema(fl.Schema):
@@ -17,7 +16,6 @@ class BenchmarksSchema(fl.Schema):
     category = fl.String()
     name = fl.String()
     size = fl.UInt32()
-    timestamp = fl.Datetime()
     git_hash = fl.String()
     median = fl.Float64()
     runs = fl.UInt32()
@@ -38,7 +36,7 @@ class Data(fl.Folder):
 def run_pipeline() -> pl.DataFrame:
     """Persist aggregated benchmark results to DuckDB."""
     return (
-        BENCHMARKS.ok_or("No benchmarks registered!")
+        REGISTERY.ok_or("No benchmarks registered!")
         .map(collect_raw_timings)
         .map(_compute_all_stats)
         .and_then(_try_collect)
@@ -73,7 +71,6 @@ def _get_git_hash() -> pc.Result[str, Exception]:
 
 def _compute_all_stats(raw_rows: pc.Seq[Row]) -> pl.LazyFrame:
     """Compute median stats from raw timings, returns atomic rows ready for DB."""
-    now = datetime.now(tz=UTC)
     return (
         pl.LazyFrame(
             raw_rows,
@@ -86,20 +83,16 @@ def _compute_all_stats(raw_rows: pc.Seq[Row]) -> pl.LazyFrame:
             pl.len().alias("runs"),
         )
         .with_columns(
-            pl.concat_str(
-                [
-                    pl.col("category"),
-                    pl.col("name"),
-                    pl.col("size"),
-                    pl.lit(int(now.timestamp() * 1_000_000)),
-                ],
-                separator="-",
-            ).alias("id"),
-            pl.lit(now).alias("timestamp"),
             _get_git_hash()
             .map(pl.lit)
             .expect("Failed to get git hash")
             .alias("git_hash"),
+        )
+        .with_columns(
+            pl.concat_str(
+                ["category", "name", "size", pl.col("git_hash").str.slice(0, 3)],
+                separator="-",
+            ).alias("id")
         )
         .pipe(BenchDb.results.schema.cast)
         .to_native()

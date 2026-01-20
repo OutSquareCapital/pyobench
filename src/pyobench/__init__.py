@@ -1,5 +1,5 @@
 """Code for benchmarks package."""
 
-from ._registery import bench
+from ._registery import REGISTERY, bench
 
-__all__ = ["bench"]
+__all__ = ["REGISTERY", "bench"]

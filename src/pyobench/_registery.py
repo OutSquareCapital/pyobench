@@ -60,7 +60,7 @@ class Row:
     time: float
 
 
-BENCHMARKS = pc.Vec[Benchmark].new()
+REGISTERY = pc.Vec[Benchmark].new()
 
 
 def bench[P](
@@ -74,7 +74,7 @@ def bench[P](
             data = pc.Iter(range(size)).into(gen)
             variants.append(Variant.from_fn(partial(func, data), size))
 
-        BENCHMARKS.append(
+        REGISTERY.append(
             Benchmark(func.__qualname__.split(".")[0], func.__name__, variants)
         )
         return func
