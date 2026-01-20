@@ -11,57 +11,6 @@ from ._pipeline import Data
 app = typer.Typer(help="Benchmarks for pyochain developments.")
 
 
-@app.command("by-size")
-@Data.db
-def plot_median_by_size(
-    categories: Annotated[
-        list[str] | None, typer.Option("--category", "-c", help="Filter by categories")
-    ] = None,
-    benchmarks: Annotated[
-        list[str] | None, typer.Option("--benchmark", "-b", help="Filter by benchmarks")
-    ] = None,
-) -> None:
-    """Plot median execution time by input size for benchmarks."""
-    return (
-        Data.db.results.scan()
-        .pipe(
-            lambda lf: lf.filter(nw.col("category").is_in(categories))
-            if categories
-            else lf
-        )
-        .pipe(
-            lambda lf: lf.filter(nw.col("name").is_in(benchmarks)) if benchmarks else lf
-        )
-        .select("category", "name", "size", "median")
-        .with_columns(
-            benchmark=nw.concat_str(
-                [nw.col("category"), nw.col("name")], separator=" - "
-            )
-        )
-        .sort("size")
-        .to_native()
-        .pl()
-        .pipe(
-            lambda df: px.line(
-                df,
-                x="size",
-                y="median",
-                color="benchmark",
-                log_x=True,
-                log_y=True,
-                markers=True,
-                title="Benchmark Performance by Input Size",
-                labels={
-                    "size": "Input Size",
-                    "median": "Median Time (seconds)",
-                    "benchmark": "Benchmark",
-                },
-                template="plotly_dark",
-            )
-        )
-    ).show()
-
-
 @app.command("heatmap")
 @Data.db
 def plot_heatmap_by_commit(
@@ -103,6 +52,48 @@ def plot_heatmap_by_commit(
                     "median": "Median Time (seconds)",
                 },
                 hover_data=["git_hash"],
+                template="plotly_dark",
+            )
+        )
+    ).show()
+
+
+@app.command("evolution")
+@Data.db
+def plot_performance_evolution(
+    category: Annotated[
+        str, typer.Option("--category", "-c", help="Category to visualize")
+    ],
+    size: Annotated[
+        int | None, typer.Option("--size", "-s", help="Filter by specific input size")
+    ] = None,
+) -> None:
+    """Plot performance evolution by commit for a specific category (Time vs Commit, colored by test name)."""
+    return (
+        Data.db.results.scan()
+        .filter(nw.col("category") == category)
+        .pipe(lambda lf: lf.filter(nw.col("size") == size) if size else lf)
+        .select("name", "git_hash", "median")
+        .with_columns(
+            nw.col("git_hash").str.slice(0, 7).alias("commit_short"),
+        )
+        .to_native()
+        .pl()
+        .sort("git_hash")
+        .pipe(
+            lambda df: px.line(
+                df,
+                x="commit_short",
+                y="median",
+                color="name",
+                title=f"Performance Evolution - Category: {category}",
+                labels={
+                    "commit_short": "Git Commit",
+                    "median": "Median Time (seconds)",
+                    "name": "Test Name",
+                },
+                hover_data=["git_hash"],
+                markers=True,
                 template="plotly_dark",
             )
         )
