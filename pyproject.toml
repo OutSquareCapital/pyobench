@@ -1,6 +1,7 @@
 [project]
     dependencies    = [
     "framelib",
+    "plotly[express]>=6.5.2",
     "polars>=1.37.1",
     "pyochain>=0.9.2",
     "typer>=0.21.1",
@@ -60,5 +61,6 @@ framelib = { git = "https://github.com/OutSquareCapital/framelib.git" }
 
 [dependency-groups]
 dev = [
+    "plotly-stubs>=0.1.2",
     "ruff>=0.14.13",
 ]
