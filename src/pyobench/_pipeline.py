@@ -1,6 +1,10 @@
 """Benchmarks for pyochain developments."""
 
+import importlib
+import importlib.util
 import subprocess
+import sys
+from pathlib import Path
 
 import framelib as fl
 import polars as pl
@@ -35,6 +39,7 @@ class Data(fl.Folder):
 
 def run_pipeline() -> pl.DataFrame:
     """Persist aggregated benchmark results to DuckDB."""
+    _discover_benchmarks()
     return (
         REGISTERY.ok_or("No benchmarks registered!")
         .map(collect_raw_timings)
@@ -42,6 +47,28 @@ def run_pipeline() -> pl.DataFrame:
         .and_then(_try_collect)
         .unwrap()
     )
+
+
+def _discover_benchmarks() -> None:
+    return (
+        pc.Iter(Path.cwd().iterdir())
+        .filter(lambda p: p.name.lower().startswith("bench"))
+        .flat_map(
+            lambda item: pc.Iter.once(item) if item.is_file() else item.rglob("*.py")
+        )
+        .for_each(_import_module)
+    )
+
+
+def _import_module(path: Path) -> None:
+    if not path.is_file() or path.suffix != ".py":
+        return
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    if spec is None or spec.loader is None:
+        return
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[path.stem] = module
+    spec.loader.exec_module(module)
 
 
 def _try_collect(lf: pl.LazyFrame) -> pc.Result[pl.DataFrame, str]:
