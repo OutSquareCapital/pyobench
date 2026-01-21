@@ -41,3 +41,12 @@ from pyobench import bench
 @bench()
 def my_function(x: int) -> int:
     return data.map(str).collect()
+```
+
+## TODO
+
+1) run across git commits to get historical performance of the decorated bench func (subprocess?). Need to efficiently manage errors if API of the func wasn't compatible across commits
+
+2) evolution graph should have X axis as observation nb, not timestamps
+
+3) heatmap should be replaced by line graph where each line is a category starting from 1, Y axis is relative performance from initial observation, X axis is observation nb
