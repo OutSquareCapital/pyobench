@@ -17,7 +17,7 @@ from ._registery import REGISTERY, Row, collect_raw_timings
 class BenchmarksSchema(fl.Schema):
     """Schema for aggregated benchmark median results."""
 
-    id = fl.String(primary_key=True)
+    id = fl.UInt64(primary_key=True)
     category = fl.String()
     name = fl.String()
     size = fl.UInt32()
@@ -46,7 +46,7 @@ def run_pipeline(path: Path) -> pl.DataFrame:
         REGISTERY.ok_or(Exception("No benchmarks registered!"))
         .map(collect_raw_timings)
         .and_then(_try_collect)
-        .expect("Failed to run benchmarks:\n")
+        .expect("Failed to run benchmarks -> \n")
     )
 
 
