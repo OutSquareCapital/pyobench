@@ -36,7 +36,6 @@ def plot_heatmap_by_commit(
                 "benchmark"
             ),
             nw.col("git_hash").str.slice(0, 7).alias("commit_short"),
-            nw.col("timestamp").cast(nw.Date()).alias("commit_date"),
         )
         .sort("timestamp")
         .to_native()
@@ -44,12 +43,12 @@ def plot_heatmap_by_commit(
         .pipe(
             lambda df: px.density_heatmap(
                 df,
-                x="commit_date",
+                x="timestamp",
                 y="benchmark",
                 z="median",
                 title="Performance Heatmap by Commit",
                 labels={
-                    "commit_date": "Commit Date",
+                    "timestamp": "Commit Date",
                     "benchmark": "Benchmark",
                     "median": "Median Time (seconds)",
                 },
@@ -82,22 +81,19 @@ def plot_performance_evolution(
             )
         )
         .select("name", "git_hash", "timestamp", "median")
-        .with_columns(
-            nw.col("git_hash").str.slice(0, 7).alias("commit_short"),
-            nw.col("timestamp").cast(nw.Date()).alias("commit_date"),
-        )
+        .with_columns(nw.col("git_hash").str.slice(0, 7).alias("commit_short"))
         .to_native()
         .pl()
         .sort("timestamp")
         .pipe(
             lambda df: px.line(
                 df,
-                x="commit_date",
+                x="timestamp",
                 y="median",
                 color="name",
                 title=f"Performance Evolution - Category: {category}",
                 labels={
-                    "commit_date": "Commit Date",
+                    "timestamp": "Commit Date",
                     "median": "Median Time (seconds)",
                     "name": "Test Name",
                 },
