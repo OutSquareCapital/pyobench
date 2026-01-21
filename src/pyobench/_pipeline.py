@@ -5,6 +5,7 @@ import importlib.util
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple, Self
 
 import framelib as fl
 import polars as pl
@@ -21,6 +22,7 @@ class BenchmarksSchema(fl.Schema):
     name = fl.String()
     size = fl.UInt32()
     git_hash = fl.String()
+    timestamp = fl.Datetime(time_unit="us")
     median = fl.Float64()
     runs = fl.UInt32()
 
@@ -37,21 +39,25 @@ class Data(fl.Folder):
     db = BenchDb()
 
 
-def run_pipeline() -> pl.DataFrame:
+class BenchmarkNotFoundError(Exception):
+    """Raised when no benchmarks are found in the current directory."""
+
+
+def run_pipeline(path: Path) -> pl.DataFrame:
     """Persist aggregated benchmark results to DuckDB."""
-    _discover_benchmarks()
+    _discover_benchmarks(path)
     return (
-        REGISTERY.ok_or("No benchmarks registered!")
+        REGISTERY.ok_or(BenchmarkNotFoundError("No benchmarks registered!"))
         .map(collect_raw_timings)
         .map(_compute_all_stats)
-        .and_then(_try_collect)
+        .map(lambda lf: lf.collect())
         .unwrap()
     )
 
 
-def _discover_benchmarks() -> None:
+def _discover_benchmarks(path: Path) -> None:
     return (
-        pc.Iter(Path.cwd().iterdir())
+        pc.Iter(path.iterdir())
         .filter(lambda p: p.name.lower().startswith("bench"))
         .flat_map(
             lambda item: pc.Iter.once(item) if item.is_file() else item.rglob("*.py")
@@ -71,28 +77,38 @@ def _import_module(path: Path) -> None:
     spec.loader.exec_module(module)
 
 
-def _try_collect(lf: pl.LazyFrame) -> pc.Result[pl.DataFrame, str]:
-    """Try to collect a LazyFrame, with error handling."""
-    try:
-        return pc.Ok(lf.collect())
-    except (
-        pl.exceptions.ColumnNotFoundError,
-        pl.exceptions.InvalidOperationError,
-    ) as e:
-        return pc.Err(f"{e}")
+class GitInfos(NamedTuple):
+    """Git commit hash and timestamp."""
+
+    hash: str
+    timestamp: str
+
+    @classmethod
+    def new(cls) -> Self:
+        return cls(
+            _run_git("git", "rev-parse", "HEAD").expect("failed to get git hash"),
+            _run_git("git", "log", "-1", "--format=%at").expect(
+                "failed to get timestamp"
+            ),
+        )
+
+    def to_exprs(self) -> tuple[pl.Expr, pl.Expr]:
+        return (
+            pl.lit(self.hash).alias("git_hash"),
+            pl.lit(self.timestamp, dtype=pl.Datetime("us")).alias("timestamp"),
+        )
 
 
-def _get_git_hash() -> pc.Result[str, Exception]:
-    """Get current git commit hash."""
+def _run_git(*args: str) -> pc.Result[str, Exception]:
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],  # noqa: S607
+        result = subprocess.run(  # noqa: S603
+            [*args],
             capture_output=True,
             text=True,
             check=True,
         )
         return pc.Ok(result.stdout.strip())
-    except Exception as e:  # noqa: BLE001
+    except (FileNotFoundError, subprocess.CalledProcessError) as e:
         return pc.Err(e)
 
 
@@ -105,16 +121,8 @@ def _compute_all_stats(raw_rows: pc.Seq[Row]) -> pl.LazyFrame:
             orient="row",
         )
         .group_by("category", "name", "size")
-        .agg(
-            pl.col("time").median().alias("median"),
-            pl.len().alias("runs"),
-        )
-        .with_columns(
-            _get_git_hash()
-            .map(pl.lit)
-            .expect("Failed to get git hash")
-            .alias("git_hash"),
-        )
+        .agg(pl.col("time").median().alias("median"), pl.len().alias("runs"))
+        .with_columns(GitInfos.new().to_exprs())
         .with_columns(
             pl.concat_str(
                 ["category", "name", "size", pl.col("git_hash").str.slice(0, 3)],

@@ -1,5 +1,6 @@
 """Entry point for benchmarks CLI."""
 
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -43,6 +44,9 @@ def setup(
 @app.command()
 @Data.db
 def run(
+    path: Annotated[
+        Path, typer.Argument(help="Path to directory containing benchmark files.")
+    ],
     *,
     debug: Annotated[
         bool, typer.Option("--dry", help="Don't persist results to database.")
@@ -53,9 +57,9 @@ def run(
     match debug:
         case True:
             CONSOLE.print("✓ Debug mode: results not persisted", style="bold yellow")
-            return run_pipeline().pipe(print)
+            return run_pipeline(path).pipe(print)
         case False:
-            run_pipeline().pipe(Data.db.results.insert_into)
+            run_pipeline(path).pipe(Data.db.results.insert_into)
 
             CONSOLE.print()
             return CONSOLE.print("✓ Results persisted to database", style="bold green")

@@ -30,28 +30,30 @@ def plot_heatmap_by_commit(
             else lf
         )
         .pipe(lambda lf: lf.filter(nw.col("size") == size) if size else lf)
-        .select("category", "name", "git_hash", "median")
+        .select("category", "name", "git_hash", "timestamp", "median")
         .with_columns(
             nw.concat_str([nw.col("category"), nw.col("name")], separator=" - ").alias(
                 "benchmark"
             ),
             nw.col("git_hash").str.slice(0, 7).alias("commit_short"),
+            nw.col("timestamp").cast(nw.Date()).alias("commit_date"),
         )
+        .sort("timestamp")
         .to_native()
         .pl()
         .pipe(
             lambda df: px.density_heatmap(
                 df,
-                x="commit_short",
+                x="commit_date",
                 y="benchmark",
                 z="median",
                 title="Performance Heatmap by Commit",
                 labels={
-                    "commit_short": "Git Commit",
+                    "commit_date": "Commit Date",
                     "benchmark": "Benchmark",
                     "median": "Median Time (seconds)",
                 },
-                hover_data=["git_hash"],
+                hover_data=["git_hash", "timestamp"],
                 template="plotly_dark",
             )
         )
@@ -68,7 +70,7 @@ def plot_performance_evolution(
         int | None, typer.Option("--size", "-s", help="Filter by specific input size")
     ] = None,
 ) -> None:
-    """Plot performance evolution by commit for a specific category (Time vs Commit, colored by test name)."""
+    """Plot performance evolution by commit for a specific category. Must specify a category."""
     return (
         Data.db.results.scan()
         .filter(nw.col("category") == category)
@@ -76,29 +78,30 @@ def plot_performance_evolution(
             lambda lf: lf.filter(nw.col("size") == size)
             if size
             else lf.with_columns(
-                nw.col("median").median().over("name", "git_hash").alias("median")
+                nw.col("median").median().over("name", "timestamp").alias("median")
             )
         )
-        .select("name", "git_hash", "median")
+        .select("name", "git_hash", "timestamp", "median")
         .with_columns(
             nw.col("git_hash").str.slice(0, 7).alias("commit_short"),
+            nw.col("timestamp").cast(nw.Date()).alias("commit_date"),
         )
         .to_native()
         .pl()
-        .sort("git_hash")
+        .sort("timestamp")
         .pipe(
             lambda df: px.line(
                 df,
-                x="commit_short",
+                x="commit_date",
                 y="median",
                 color="name",
                 title=f"Performance Evolution - Category: {category}",
                 labels={
-                    "commit_short": "Git Commit",
+                    "commit_date": "Commit Date",
                     "median": "Median Time (seconds)",
                     "name": "Test Name",
                 },
-                hover_data=["git_hash"],
+                hover_data=["git_hash", "timestamp"],
                 markers=True,
                 template="plotly_dark",
             )
