@@ -154,7 +154,7 @@ wheels = [
 [[package]]
 name = "framelib"
 version = "0.1.45"
-source = { git = "https://github.com/OutSquareCapital/framelib.git#eeca926d50f3d587a98850000fcae4a307c4576a" }
+source = { git = "https://github.com/OutSquareCapital/framelib.git#0e58772ee303b9a118ab6b7b22bffafdbe7ff090" }
 dependencies = [
     { name = "duckdb" },
     { name = "narwhals" },
