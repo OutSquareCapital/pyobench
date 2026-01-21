@@ -39,19 +39,14 @@ class Data(fl.Folder):
     db = BenchDb()
 
 
-class BenchmarkNotFoundError(Exception):
-    """Raised when no benchmarks are found in the current directory."""
-
-
 def run_pipeline(path: Path) -> pl.DataFrame:
     """Persist aggregated benchmark results to DuckDB."""
     _discover_benchmarks(path)
     return (
-        REGISTERY.ok_or(BenchmarkNotFoundError("No benchmarks registered!"))
+        REGISTERY.ok_or(Exception("No benchmarks registered!"))
         .map(collect_raw_timings)
-        .map(_compute_all_stats)
-        .map(lambda lf: lf.collect())
-        .unwrap()
+        .and_then(_try_collect)
+        .expect("Failed to run benchmarks:\n")
     )
 
 
@@ -95,7 +90,7 @@ class GitInfos(NamedTuple):
     def to_exprs(self) -> tuple[pl.Expr, pl.Expr]:
         return (
             pl.lit(self.hash).alias("git_hash"),
-            pl.lit(self.timestamp, dtype=pl.Datetime("us")).alias("timestamp"),
+            pl.from_epoch(pl.lit(self.timestamp)).alias("timestamp"),
         )
 
 
@@ -112,7 +107,14 @@ def _run_git(*args: str) -> pc.Result[str, Exception]:
         return pc.Err(e)
 
 
-def _compute_all_stats(raw_rows: pc.Seq[Row]) -> pl.LazyFrame:
+def _try_collect(raw_rows: pc.Seq[Row]) -> pc.Result[pl.DataFrame, Exception]:
+    try:
+        return pc.Ok(_compute_all_stats(raw_rows))
+    except pl.exceptions.PolarsError as e:
+        return pc.Err(e)
+
+
+def _compute_all_stats(raw_rows: pc.Seq[Row]) -> pl.DataFrame:
     """Compute median stats from raw timings, returns atomic rows ready for DB."""
     return (
         pl.LazyFrame(
@@ -124,11 +126,9 @@ def _compute_all_stats(raw_rows: pc.Seq[Row]) -> pl.LazyFrame:
         .agg(pl.col("time").median().alias("median"), pl.len().alias("runs"))
         .with_columns(GitInfos.new().to_exprs())
         .with_columns(
-            pl.concat_str(
-                ["category", "name", "size", pl.col("git_hash").str.slice(0, 3)],
-                separator="-",
-            ).alias("id")
+            pl.struct("category", "name", "size", "git_hash").hash().alias("id")
         )
         .pipe(BenchDb.results.schema.cast)
         .to_native()
+        .collect()
     )

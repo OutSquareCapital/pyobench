@@ -17,11 +17,7 @@ app.add_typer(_graphs.app, name="viz", help="Visualization commands")
 @Data.db
 def show() -> None:
     """Show all benchmark results from the database."""
-    return (
-        Data.db.results.scan()
-        .select("category", "name", "size", "runs", "median", "git_hash")
-        .pipe(print)
-    )
+    return Data.db.results.scan().pipe(print)
 
 
 @app.command()
