@@ -42,10 +42,19 @@ def setup(
     CONSOLE.print("OK: benchmark database setup complete", style="bold green")
 
 
+CategoryOpt = Annotated[
+    str | None,
+    typer.Option(
+        "--category", "-c", help="Filter benchmarks by category (partial match)."
+    ),
+]
+
+
 @app.command()
 @Data.db
 def run(
     path: BenchPath,
+    category: CategoryOpt = None,
     *,
     debug: Annotated[
         bool, typer.Option("--dry", help="Don't persist results to database.")
@@ -56,9 +65,9 @@ def run(
     match debug:
         case True:
             CONSOLE.print("OK: debug mode (results not persisted)", style="bold yellow")
-            return run_pipeline(path).pipe(print)
+            return run_pipeline(path, category).pipe(print)
         case False:
-            run_pipeline(path).pipe(Data.db.results.insert_into)
+            run_pipeline(path, category).pipe(Data.db.results.insert_into)
 
             CONSOLE.print()
             return CONSOLE.print(
@@ -73,9 +82,10 @@ def history(
     commits: Annotated[
         list[str], typer.Argument(help="Git commit hashes (or refs) to run, in order.")
     ],
+    category: CategoryOpt = None,
 ) -> None:
     """Run benchmarks for git commits and ingest results into the DB."""
-    run_history(commits, path)
+    run_history(commits, path, category)
 
 
 if __name__ == "__main__":

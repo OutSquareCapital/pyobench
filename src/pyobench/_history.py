@@ -15,17 +15,11 @@ from ._pipeline import Data
 from ._registery import CONSOLE
 
 
-def run_history(commits: list[str], bench_path: Path) -> None:
+def run_history(
+    commits: list[str], bench_path: Path, category: str | None = None
+) -> None:
     """Run benchmarks for each commit, store in temp partitions, then ingest into DB."""
     repo = Path.cwd().resolve()
-    _resolve_commits(repo, commits).for_each(lambda c: _run_commit(repo, c, bench_path))
-    CONSOLE.print("\n▶ Ingesting all partitions into DB...", style="bold blue")
-    _save_results()
-    CONSOLE.print("OK: all results ingested", style="bold green")
-
-
-def _resolve_commits(repo: Path, commits: list[str]) -> pc.Iter[str]:
-    """Resolve commit refs (HEAD~1, tags, etc.) to full hashes."""
 
     def _resolve(ref: str) -> str:
         return (
@@ -36,7 +30,12 @@ def _resolve_commits(repo: Path, commits: list[str]) -> pc.Iter[str]:
             .unwrap_or(ref)
         )
 
-    return pc.Iter(commits).map(_resolve)
+    pc.Iter(commits).map(_resolve).for_each(
+        lambda c: _run_commit(repo, c, bench_path, category)
+    )
+    CONSOLE.print("\n▶ Ingesting all partitions into DB...", style="bold blue")
+    _save_results()
+    CONSOLE.print("OK: all results ingested", style="bold green")
 
 
 def _save_results() -> None:
@@ -49,7 +48,7 @@ def _save_results() -> None:
 
 
 def _run_commit(
-    repo: Path, commit: str, bench_path: Path
+    repo: Path, commit: str, bench_path: Path, category: str | None = None
 ) -> pc.Result[None, Exception]:
     """Run benchmarks for a single commit.
 
@@ -64,7 +63,9 @@ def _run_commit(
     result = (
         _git(repo, "worktree", "add", "--detach", wt.as_posix(), commit)
         .and_then(lambda _: _sync_worktree(wt))
-        .and_then(lambda _: _run_bench_subprocess(wt, repo.joinpath(bench_path)))
+        .and_then(
+            lambda _: _run_bench_subprocess(wt, repo.joinpath(bench_path), category)
+        )
         .inspect(lambda _: CONSOLE.print(f"OK: {commit[:8]}", style="bold green"))
         .inspect_err(lambda e: CONSOLE.print(f"✗ {commit[:8]}: {e}", style="bold red"))
     )
@@ -88,7 +89,9 @@ def _sync_worktree(wt: Path) -> pc.Result[None, Exception]:
         return pc.Err(e)
 
 
-def _run_bench_subprocess(wt: Path, bench_path: Path) -> pc.Result[None, Exception]:
+def _run_bench_subprocess(
+    wt: Path, bench_path: Path, category: str | None = None
+) -> pc.Result[None, Exception]:
     """Run benchmarks in the worktree's environment but with CURRENT bench files."""
     try:
         subprocess.run(  # noqa: S603
@@ -100,6 +103,7 @@ def _run_bench_subprocess(wt: Path, bench_path: Path) -> pc.Result[None, Excepti
                 _BENCH_SCRIPT,
                 bench_path.as_posix(),
                 Data.temp.source.as_posix(),
+                category or "",
             ],
             check=True,
             cwd=wt,
@@ -116,8 +120,9 @@ from pyobench._pipeline import run_pipeline, Data
 
 bench_path = Path(sys.argv[1])
 temp_path = Path(sys.argv[2])
+category = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
 Data.temp.source = temp_path  # ensure same temp location
-run_pipeline(bench_path).pipe(Data.temp.write)
+run_pipeline(bench_path, category).pipe(Data.temp.write)
 """
 
 

@@ -11,7 +11,7 @@ import framelib as fl
 import polars as pl
 import pyochain as pc
 
-from ._registery import REGISTERY, Row, collect_raw_timings
+from ._registery import REGISTERY, Benchmark, Row, collect_raw_timings
 
 
 class BenchmarksSchema(fl.Schema):
@@ -40,15 +40,27 @@ class Data(fl.Folder):
     temp = fl.ParquetPartitioned(partition_by="git_hash", schema=BenchmarksSchema)
 
 
-def run_pipeline(path: Path) -> pl.DataFrame:
+def run_pipeline(path: Path, category: str | None = None) -> pl.DataFrame:
     """Persist aggregated benchmark results to DuckDB."""
     _discover_benchmarks(path)
     return (
-        REGISTERY.ok_or(Exception("No benchmarks registered!"))
+        _filter_by_category(REGISTERY, category)
+        .ok_or(Exception("No benchmarks registered!"))
         .map(collect_raw_timings)
         .and_then(_try_collect)
         .expect("Failed to run benchmarks -> \n")
     )
+
+
+def _filter_by_category(
+    registry: pc.Dict[str, pc.Vec[Benchmark]], category: str | None
+) -> pc.Option[pc.Seq[Benchmark]] | pc.Option[pc.Vec[Benchmark]]:
+    """Filter registry by category name (case-insensitive partial match)."""
+    match category:
+        case None:
+            return registry.values().iter().flatten().collect().then_some()
+        case cat:
+            return registry.get_item(cat)
 
 
 def _discover_benchmarks(path: Path) -> None:

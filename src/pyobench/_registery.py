@@ -60,7 +60,7 @@ class Row:
     time: float
 
 
-REGISTERY = pc.Vec[Benchmark].new()
+REGISTERY = pc.Dict[str, pc.Vec[Benchmark]].new()
 
 
 def bench[P, R](
@@ -73,16 +73,17 @@ def bench[P, R](
         for size in (256, 512, 1024, 2048):
             data = pc.Iter(range(size)).into(gen)
             variants.append(Variant.from_fn(partial(func, data), size))
+        cat = func.__qualname__.split(".")[0]
+        val = REGISTERY.get_item(cat).unwrap_or_else(lambda: pc.Vec[Benchmark].new())
+        val.append(Benchmark(cat, func.__name__, variants))
 
-        REGISTERY.append(
-            Benchmark(func.__qualname__.split(".")[0], func.__name__, variants)
-        )
+        REGISTERY.insert(cat, val)
         return func
 
     return decorator
 
 
-def collect_raw_timings(benchmarks: pc.Vec[Benchmark]) -> pc.Seq[Row]:
+def collect_raw_timings(benchmarks: pc.Seq[Benchmark]) -> pc.Seq[Row]:
     """Collect raw timing data for all benchmarks. Stats computed at the end."""
     total_runs: int = (
         benchmarks.iter().flat_map(lambda b: b.variants).map(lambda v: v.n_runs).sum()
