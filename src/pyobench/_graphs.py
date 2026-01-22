@@ -4,24 +4,28 @@ from typing import Annotated
 
 import narwhals as nw
 import plotly.express as px
+import polars as pl
 import typer
+from plotly import graph_objects as go
 
 from ._pipeline import Data
 
 app = typer.Typer(help="Benchmarks for pyochain developments.")
 
+SizeFilter = Annotated[
+    int | None, typer.Option("--size", "-s", help="Filter by specific input size")
+]
 
-@app.command("heatmap")
+
+@app.command("relative")
 @Data.db
-def plot_heatmap_by_commit(
+def plot_relative(
     categories: Annotated[
         list[str] | None, typer.Option("--category", "-c", help="Filter by categories")
     ] = None,
-    size: Annotated[
-        int | None, typer.Option("--size", "-s", help="Filter by specific input size")
-    ] = None,
+    size: SizeFilter = None,
 ) -> None:
-    """Create heatmap of performance across benchmarks and git commits."""
+    """Plot category performance evolution relative to first observation."""
     return (
         Data.db.results.scan()
         .pipe(
@@ -30,44 +34,56 @@ def plot_heatmap_by_commit(
             else lf
         )
         .pipe(lambda lf: lf.filter(nw.col("size") == size) if size else lf)
-        .select("category", "name", "git_hash", "timestamp", "median")
-        .with_columns(
-            nw.concat_str([nw.col("category"), nw.col("name")], separator=" - ").alias(
-                "benchmark"
-            ),
-            nw.col("git_hash").str.slice(0, 7).alias("commit_short"),
-        )
-        .sort("timestamp")
+        .select("category", "git_hash", "timestamp", "median")
+        .with_columns(nw.col("timestamp").pipe(_observation_nb))
         .to_native()
-        .pl()
-        .pipe(
-            lambda df: px.density_heatmap(
-                df,
-                x="timestamp",
-                y="benchmark",
-                z="median",
-                title="Performance Heatmap by Commit",
-                labels={
-                    "timestamp": "Commit Date",
-                    "benchmark": "Benchmark",
-                    "median": "Median Time (seconds)",
-                },
-                hover_data=["git_hash", "timestamp"],
-                template="plotly_dark",
-            )
+        .pl(lazy=True)
+        .group_by("category", "observation")
+        .agg(
+            pl.col("median").median().alias("median"),
+            pl.col("git_hash").first(),
+            pl.col("timestamp").first(),
         )
-    ).show()
+        .with_columns(
+            pl.col("median")
+            .sort_by("observation")
+            .first()
+            .over("category")
+            .alias("baseline")
+        )
+        .with_columns(pl.col("median").truediv(pl.col("baseline")).alias("relative"))
+        .sort("observation")
+        .collect()
+        .pipe(_line_rel)
+        .show()
+    )
 
 
-@app.command("evolution")
+def _line_rel(df: pl.DataFrame) -> go.Figure:
+    return px.line(
+        df,
+        x="observation",
+        y="relative",
+        color="category",
+        title="Relative Performance by Category",
+        labels={
+            "observation": "Observation #",
+            "relative": "Relative to first observation",
+            "category": "Category",
+        },
+        hover_data=["category", "git_hash", "timestamp", "median", "baseline"],
+        markers=True,
+        template="plotly_dark",
+    )
+
+
+@app.command("absolute")
 @Data.db
-def plot_performance_evolution(
+def plot_absolute(
     category: Annotated[
         str, typer.Option("--category", "-c", help="Category to visualize")
     ],
-    size: Annotated[
-        int | None, typer.Option("--size", "-s", help="Filter by specific input size")
-    ] = None,
+    size: SizeFilter = None,
 ) -> None:
     """Plot performance evolution by commit for a specific category. Must specify a category."""
     return (
@@ -80,26 +96,32 @@ def plot_performance_evolution(
                 nw.col("median").median().over("name", "timestamp").alias("median")
             )
         )
-        .select("name", "git_hash", "timestamp", "median")
-        .with_columns(nw.col("git_hash").str.slice(0, 7).alias("commit_short"))
+        .select("name", "git_hash", nw.col("timestamp").pipe(_observation_nb), "median")
         .to_native()
         .pl()
-        .sort("timestamp")
-        .pipe(
-            lambda df: px.line(
-                df,
-                x="timestamp",
-                y="median",
-                color="name",
-                title=f"Performance Evolution - Category: {category}",
-                labels={
-                    "timestamp": "Commit Date",
-                    "median": "Median Time (seconds)",
-                    "name": "Test Name",
-                },
-                hover_data=["git_hash", "timestamp"],
-                markers=True,
-                template="plotly_dark",
-            )
-        )
-    ).show()
+        .sort("observation")
+        .pipe(_line_abs, category)
+        .show()
+    )
+
+
+def _line_abs(df: pl.DataFrame, category: str) -> go.Figure:
+    return px.line(
+        df,
+        x="observation",
+        y="median",
+        color="name",
+        title=f"Performance Evolution - Category: {category}",
+        labels={
+            "observation": "Observation #",
+            "median": "Median Time (seconds)",
+            "name": "Test Name",
+        },
+        hover_data=["git_hash", "observation"],
+        markers=True,
+        template="plotly_dark",
+    )
+
+
+def _observation_nb(expr: nw.Expr) -> nw.Expr:
+    return expr.rank(method="dense").cast(nw.Int64).alias("observation")

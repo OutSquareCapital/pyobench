@@ -16,7 +16,7 @@ class _Foo:  # pyright: ignore[reportUnusedClass]
 
     @bench()
     @staticmethod
-    def test_func_two(data: pc.Seq[int]) -> object:
+    def test_func_two(data: pc.Seq[int]) -> int:
         """Benchmark: sum all elements in a sequence."""
         return data.iter().sum()
 
