@@ -18,10 +18,25 @@ from ._registery import CONSOLE
 def run_history(commits: list[str], bench_path: Path) -> None:
     """Run benchmarks for each commit, store in temp partitions, then ingest into DB."""
     repo = Path.cwd().resolve()
-    pc.Iter(commits).for_each(lambda c: _run_commit(repo, c, bench_path))
+    _resolve_commits(repo, commits).for_each(lambda c: _run_commit(repo, c, bench_path))
     CONSOLE.print("\n▶ Ingesting all partitions into DB...", style="bold blue")
     _save_results()
     CONSOLE.print("OK: all results ingested", style="bold green")
+
+
+def _resolve_commits(repo: Path, commits: list[str]) -> pc.Iter[str]:
+    """Resolve commit refs (HEAD~1, tags, etc.) to full hashes."""
+
+    def _resolve(ref: str) -> str:
+        return (
+            _git(repo, "rev-parse", ref)
+            .inspect_err(
+                lambda e: CONSOLE.print(f"✗ Can't resolve {ref}: {e}", style="bold red")
+            )
+            .unwrap_or(ref)
+        )
+
+    return pc.Iter(commits).map(_resolve)
 
 
 def _save_results() -> None:
@@ -43,19 +58,18 @@ def _run_commit(
     3. Run benchmarks in worktree's env but with CURRENT bench files (ASV-like)
     4. Cleanup worktree
     """
-    CONSOLE.print(f"\n▶ {commit}", style="bold blue")
-    wt = Data.temp.source.joinpath(f"wt_{commit[:8]}")
+    CONSOLE.print(f"\n▶ {commit[:8]}", style="bold blue")
+    wt = Data.source().joinpath("worktrees", f"wt_{commit[:8]}")
 
-    _git(repo, "worktree", "remove", "--force", wt.as_posix())
-
-    return (
+    result = (
         _git(repo, "worktree", "add", "--detach", wt.as_posix(), commit)
         .and_then(lambda _: _sync_worktree(wt))
         .and_then(lambda _: _run_bench_subprocess(wt, repo.joinpath(bench_path)))
         .inspect(lambda _: CONSOLE.print(f"OK: {commit[:8]}", style="bold green"))
         .inspect_err(lambda e: CONSOLE.print(f"✗ {commit[:8]}: {e}", style="bold red"))
-        .inspect(lambda _: _git(repo, "worktree", "remove", "--force", wt.as_posix()))
     )
+    _git(repo, "worktree", "remove", "--force", wt.as_posix())
+    return result
 
 
 def _sync_worktree(wt: Path) -> pc.Result[None, Exception]:
@@ -65,14 +79,17 @@ def _sync_worktree(wt: Path) -> pc.Result[None, Exception]:
             ["uv", "sync"],  # noqa: S607
             check=True,
             cwd=wt,
-            capture_output=True,
         )
         return pc.Ok(None)
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+    except subprocess.CalledProcessError as e:
+        CONSOLE.print(f"uv sync failed:\n{e.stderr}", style="bold red")
+        return pc.Err(e)
+    except FileNotFoundError as e:
         return pc.Err(e)
 
 
 def _run_bench_subprocess(wt: Path, bench_path: Path) -> pc.Result[None, Exception]:
+    """Run benchmarks in the worktree's environment but with CURRENT bench files."""
     try:
         subprocess.run(  # noqa: S603
             [  # noqa: S607
@@ -104,9 +121,14 @@ run_pipeline(bench_path).pipe(Data.temp.write)
 """
 
 
-def _git(repo: Path, *args: str) -> pc.Result[None, Exception]:
+def _git(repo: Path, *args: str) -> pc.Result[str, Exception]:
     try:
-        subprocess.run(["git", "-C", repo.as_posix(), *args], check=True)  # noqa: S603, S607
-        return pc.Ok(None)
+        result = subprocess.run(  # noqa: S603
+            ["git", "-C", repo.as_posix(), *args],  # noqa: S607
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return pc.Ok(result.stdout.strip())
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         return pc.Err(e)
