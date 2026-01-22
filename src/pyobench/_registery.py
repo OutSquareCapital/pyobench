@@ -63,12 +63,12 @@ class Row:
 REGISTERY = pc.Vec[Benchmark].new()
 
 
-def bench[P](
+def bench[P, R](
     *, gen: Callable[[pc.Iter[int]], P] = lambda size: size.collect()
-) -> Callable[[Callable[[P], object]], Callable[[P], object]]:
+) -> Callable[[Callable[[P], R]], Callable[[P], R]]:
     """Decorator to register benchmarks with multiple data sizes."""
 
-    def decorator(func: Callable[[P], object]) -> Callable[[P], object]:
+    def decorator(func: Callable[[P], R]) -> Callable[[P], R]:
         variants = pc.Vec[Variant].new()
         for size in (256, 512, 1024, 2048):
             data = pc.Iter(range(size)).into(gen)
@@ -92,14 +92,7 @@ def collect_raw_timings(benchmarks: pc.Vec[Benchmark]) -> pc.Seq[Row]:
         style="bold white",
     )
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        TimeRemainingColumn(),
-        console=CONSOLE,
-    ) as progress:
+    with _progress_bar() as progress:
         task = progress.add_task("[cyan]Running benchmarks...", total=total_runs)
         f = partial(_run_variant, progress, task)
         return (
@@ -109,6 +102,17 @@ def collect_raw_timings(benchmarks: pc.Vec[Benchmark]) -> pc.Seq[Row]:
             )
             .collect()
         )
+
+
+def _progress_bar() -> Progress:
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeRemainingColumn(),
+        console=CONSOLE,
+    )
 
 
 def _run_variant(
