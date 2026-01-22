@@ -12,10 +12,6 @@ from ._registery import CONSOLE
 app = typer.Typer(help="Benchmarks for pyochain developments.")
 app.add_typer(_graphs.app, name="viz", help="Visualization commands")
 
-BenchPath = Annotated[
-    Path, typer.Argument(help="Path to directory containing benchmark files.")
-]
-
 
 @app.command()
 @Data.db
@@ -41,19 +37,18 @@ def setup(
     CONSOLE.print("OK: benchmark database setup complete", style="bold green")
 
 
-CategoryOpt = Annotated[
-    str | None,
-    typer.Option(
-        "--category", "-c", help="Filter benchmarks by category (partial match)."
-    ),
-]
-
-
 @app.command()
 @Data.db
 def run(
-    path: BenchPath,
-    category: CategoryOpt = None,
+    path: Annotated[
+        Path, typer.Argument(help="Path to directory containing benchmark files.")
+    ],
+    category: Annotated[
+        str | None,
+        typer.Option(
+            "--category", "-c", help="Filter benchmarks by category (partial match)."
+        ),
+    ] = None,
     *,
     debug: Annotated[
         bool, typer.Option("--dry", help="Don't persist results to database.")
