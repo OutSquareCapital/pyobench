@@ -36,6 +36,7 @@ class BenchDb(fl.DataBase):
 class Data(fl.Folder):
     """Folder for storing benchmark databases."""
 
+    __source__ = Path.cwd()
     db = BenchDb()
     temp = fl.ParquetPartitioned(partition_by="git_hash", schema=BenchmarksSchema)
 

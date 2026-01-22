@@ -6,7 +6,6 @@ from typing import Annotated
 import typer
 
 from . import _graphs
-from ._history import run_history
 from ._pipeline import Data, run_pipeline
 from ._registery import CONSOLE
 
@@ -73,19 +72,6 @@ def run(
             return CONSOLE.print(
                 "OK: results persisted to database", style="bold green"
             )
-
-
-@app.command("history")
-@Data.db
-def history(
-    path: BenchPath,
-    commits: Annotated[
-        list[str], typer.Argument(help="Git commit hashes (or refs) to run, in order.")
-    ],
-    category: CategoryOpt = None,
-) -> None:
-    """Run benchmarks for git commits and ingest results into the DB."""
-    run_history(commits, path, category)
 
 
 if __name__ == "__main__":
