@@ -37,6 +37,7 @@ class Data(fl.Folder):
     """Folder for storing benchmark databases."""
 
     db = BenchDb()
+    temp = fl.ParquetPartitioned(partition_by="git_hash", schema=BenchmarksSchema)
 
 
 def run_pipeline(path: Path) -> pl.DataFrame:

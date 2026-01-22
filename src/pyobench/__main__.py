@@ -6,11 +6,16 @@ from typing import Annotated
 import typer
 
 from . import _graphs
+from ._history import run_history
 from ._pipeline import Data, run_pipeline
 from ._registery import CONSOLE
 
 app = typer.Typer(help="Benchmarks for pyochain developments.")
 app.add_typer(_graphs.app, name="viz", help="Visualization commands")
+
+BenchPath = Annotated[
+    Path, typer.Argument(help="Path to directory containing benchmark files.")
+]
 
 
 @app.command()
@@ -34,15 +39,13 @@ def setup(
         Data.db.results.create_or_replace()
     else:
         Data.db.results.create()
-    CONSOLE.print("✓ Benchmark database setup complete", style="bold green")
+    CONSOLE.print("OK: benchmark database setup complete", style="bold green")
 
 
 @app.command()
 @Data.db
 def run(
-    path: Annotated[
-        Path, typer.Argument(help="Path to directory containing benchmark files.")
-    ],
+    path: BenchPath,
     *,
     debug: Annotated[
         bool, typer.Option("--dry", help="Don't persist results to database.")
@@ -52,13 +55,27 @@ def run(
     CONSOLE.print("Running benchmarks...", style="bold blue")
     match debug:
         case True:
-            CONSOLE.print("✓ Debug mode: results not persisted", style="bold yellow")
+            CONSOLE.print("OK: debug mode (results not persisted)", style="bold yellow")
             return run_pipeline(path).pipe(print)
         case False:
             run_pipeline(path).pipe(Data.db.results.insert_into)
 
             CONSOLE.print()
-            return CONSOLE.print("✓ Results persisted to database", style="bold green")
+            return CONSOLE.print(
+                "OK: results persisted to database", style="bold green"
+            )
+
+
+@app.command("history")
+@Data.db
+def history(
+    path: BenchPath,
+    commits: Annotated[
+        list[str], typer.Argument(help="Git commit hashes (or refs) to run, in order.")
+    ],
+) -> None:
+    """Run benchmarks for git commits and ingest results into the DB."""
+    run_history(commits, path)
 
 
 if __name__ == "__main__":
