@@ -60,7 +60,7 @@ def plot_relative(categories: CatFilter = None) -> None:
             .over("observation", "category")
             .alias("median_over_category"),
         )
-        .sort("observation")
+        .sort("name", "observation")
         .collect()
         .pipe(_line_rel)
         .show()
