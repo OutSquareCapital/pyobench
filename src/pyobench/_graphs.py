@@ -33,7 +33,7 @@ def plot_relative(categories: CatFilter = None) -> None:
             "category",
             "git_hash",
             "timestamp",
-            "median",
+            nw.col("median").over("name", "size", "git_hash").alias("median"),
             "size",
             nw.col("timestamp")
             .rank(method="dense")

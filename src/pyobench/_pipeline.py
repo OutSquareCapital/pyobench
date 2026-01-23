@@ -17,7 +17,6 @@ from ._registery import REGISTERY, Benchmark, Row, collect_raw_timings
 class BenchmarksSchema(fl.Schema):
     """Schema for aggregated benchmark median results."""
 
-    id = fl.UInt64(primary_key=True)
     category = fl.String()
     name = fl.String()
     size = fl.UInt32()
@@ -38,7 +37,6 @@ class Data(fl.Folder):
 
     __source__ = Path.cwd()
     db = BenchDb()
-    temp = fl.ParquetPartitioned(partition_by="git_hash", schema=BenchmarksSchema)
 
 
 def run_pipeline(path: Path, category: str | None = None) -> pl.DataFrame:
@@ -139,9 +137,6 @@ def _compute_all_stats(raw_rows: pc.Seq[Row]) -> pl.DataFrame:
         .group_by("category", "name", "size")
         .agg(pl.col("time").median().alias("median"), pl.len().alias("runs"))
         .with_columns(GitInfos.new().to_exprs())
-        .with_columns(
-            pl.struct("category", "name", "size", "git_hash").hash().alias("id")
-        )
         .pipe(BenchDb.results.schema.cast)
         .to_native()
         .collect()
