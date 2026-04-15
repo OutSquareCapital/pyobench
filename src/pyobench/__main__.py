@@ -30,10 +30,7 @@ def setup(
 ) -> None:
     """Setup the benchmark database."""
     Data.source().mkdir(exist_ok=True)
-    if overwrite:
-        Data.db.results.create_or_replace()
-    else:
-        Data.db.results.create()
+    _ = Data.db.results.create_or_replace() if overwrite else Data.db.results.create()
     CONSOLE.print("OK: benchmark database setup complete", style="bold green")
 
 
@@ -61,7 +58,7 @@ def run(
             CONSOLE.print("OK: debug mode (results not persisted)", style="bold yellow")
             return run_pipeline(path, category).pipe(print)
         case False:
-            run_pipeline(path, category).pipe(Data.db.results.insert_into)
+            _ = run_pipeline(path, category).pipe(Data.db.results.insert_into)
 
             CONSOLE.print()
             return CONSOLE.print(

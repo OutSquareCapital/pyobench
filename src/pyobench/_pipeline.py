@@ -1,11 +1,10 @@
 """Benchmarks for pyochain developments."""
 
-import importlib
 import importlib.util
 import subprocess
 import sys
 from pathlib import Path
-from typing import NamedTuple, Self
+from typing import NamedTuple, Self, final
 
 import framelib as fl
 import polars as pl
@@ -14,6 +13,7 @@ import pyochain as pc
 from ._registery import REGISTERY, Benchmark, Row, collect_raw_timings
 
 
+@final
 class BenchmarksSchema(fl.Schema):
     """Schema for aggregated benchmark median results."""
 
@@ -26,12 +26,14 @@ class BenchmarksSchema(fl.Schema):
     runs = fl.UInt32()
 
 
+@final
 class BenchDb(fl.DataBase):
     """DuckDB database for storing benchmark results."""
 
     results = fl.Table(BenchmarksSchema)
 
 
+@final
 class Data(fl.Folder):
     """Folder for storing benchmark databases."""
 
@@ -40,7 +42,11 @@ class Data(fl.Folder):
 
 
 def run_pipeline(path: Path, category: str | None = None) -> pl.DataFrame:
-    """Persist aggregated benchmark results to DuckDB."""
+    """Persist aggregated benchmark results to DuckDB.
+
+    Returns:
+        pl.DataFrame: DataFrame containing aggregated benchmark results.
+    """
     _discover_benchmarks(path)
     return (
         _filter_by_category(REGISTERY, category)
@@ -54,7 +60,11 @@ def run_pipeline(path: Path, category: str | None = None) -> pl.DataFrame:
 def _filter_by_category(
     registry: pc.Dict[str, pc.Vec[Benchmark]], category: str | None
 ) -> pc.Option[pc.Seq[Benchmark]] | pc.Option[pc.Vec[Benchmark]]:
-    """Filter registry by category name (case-insensitive partial match)."""
+    """Filter registry by category name (case-insensitive partial match).
+
+    Returns:
+        pc.Option[pc.Seq[Benchmark]]: `Some(filtered_benchmarks)` if matches found, else `NONE`.
+    """
     match category:
         case None:
             return registry.values().iter().flatten().collect().then_some()
@@ -64,7 +74,8 @@ def _filter_by_category(
 
 def _discover_benchmarks(path: Path) -> None:
     return (
-        pc.Iter(path.iterdir())
+        pc
+        .Iter(path.iterdir())
         .filter(lambda p: p.name.lower().startswith("bench"))
         .flat_map(
             lambda item: pc.Iter.once(item) if item.is_file() else item.rglob("*.py")
@@ -127,9 +138,14 @@ def _try_collect(raw_rows: pc.Seq[Row]) -> pc.Result[pl.DataFrame, Exception]:
 
 
 def _compute_all_stats(raw_rows: pc.Seq[Row]) -> pl.DataFrame:
-    """Compute median stats from raw timings, returns atomic rows ready for DB."""
+    """Compute median stats from raw timings, returns atomic rows ready for DB.
+
+    Returns:
+        pl.DataFrame: DataFrame containing aggregated benchmark results.
+    """
     return (
-        pl.LazyFrame(
+        pl
+        .LazyFrame(
             raw_rows,
             schema=["category", "name", "size", "run_idx", "time"],
             orient="row",

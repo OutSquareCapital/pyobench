@@ -35,7 +35,11 @@ class Variant(NamedTuple):
 
     @classmethod
     def from_fn(cls, fn: BenchFn, size: int) -> Self:
-        """Estimate number of runs needed for benchmark variant."""
+        """Estimate number of runs needed for benchmark variant.
+
+        Returns:
+            Self: Variant instance with estimated number of runs.
+        """
         warmup_time = timeit.timeit(fn, number=WARMUP_RUNS) / WARMUP_RUNS
         est = int(TARGET_BENCH_SEC / 2 / warmup_time / CALLS_BY_RUN)
         return cls(size, max(MIN_RUNS, est), fn)
@@ -66,7 +70,11 @@ REGISTERY = pc.Dict[str, pc.Vec[Benchmark]].new()
 def bench[P, R](
     *, gen: Callable[[pc.Iter[int]], P] = lambda size: size.collect()
 ) -> Callable[[Callable[[P], R]], Callable[[P], R]]:
-    """Decorator to register benchmarks with multiple data sizes."""
+    """Decorator to register benchmarks with multiple data sizes.
+
+    Returns:
+        Callable[[Callable[[P], R]], Callable[[P], R]]: Decorator function.
+    """
 
     def decorator(func: Callable[[P], R]) -> Callable[[P], R]:
         variants = pc.Vec[Variant].new()
@@ -74,17 +82,21 @@ def bench[P, R](
             data = pc.Iter(range(size)).into(gen)
             variants.append(Variant.from_fn(partial(func, data), size))
         cat = func.__qualname__.split(".")[0]
-        val = REGISTERY.get_item(cat).unwrap_or_else(lambda: pc.Vec[Benchmark].new())
+        val = REGISTERY.get_item(cat).unwrap_or_else(pc.Vec[Benchmark].new)
         val.append(Benchmark(cat, func.__name__, variants))
 
-        REGISTERY.insert(cat, val)
+        _ = REGISTERY.insert(cat, val)
         return func
 
     return decorator
 
 
 def collect_raw_timings(benchmarks: pc.Seq[Benchmark]) -> pc.Seq[Row]:
-    """Collect raw timing data for all benchmarks. Stats computed at the end."""
+    """Collect raw timing data for all benchmarks. Stats computed at the end.
+
+    Returns:
+        pc.Seq[Row]: Sequence of raw timing data rows.
+    """
     total_runs: int = (
         benchmarks.iter().flat_map(lambda b: b.variants).map(lambda v: v.n_runs).sum()
     )
@@ -97,7 +109,8 @@ def collect_raw_timings(benchmarks: pc.Seq[Benchmark]) -> pc.Seq[Row]:
         task = progress.add_task("[cyan]Running benchmarks...", total=total_runs)
         f = partial(_run_variant, progress, task)
         return (
-            benchmarks.iter()
+            benchmarks
+            .iter()
             .flat_map(
                 lambda bench: bench.variants.iter().flat_map(lambda v: f(v, bench))
             )
@@ -118,17 +131,17 @@ def _progress_bar() -> Progress:
 
 def _run_variant(
     progress: Progress,
-    task: Any,  # noqa: ANN401
+    task: Any,  # noqa: ANN401  # pyright: ignore[reportExplicitAny, reportAny]
     variant: Variant,
     bench: Benchmark,
 ) -> pc.Iter[Row]:
     def _update_progress(run_idx: int, fn: BenchFn) -> Row:
         progress.update(
-            task,
+            task,  # pyright: ignore[reportAny]
             description=f"[cyan]{bench.category}: {bench.name} @ {variant.size}",
         )
         time_taken = timeit.timeit(fn, number=CALLS_BY_RUN)
-        progress.advance(task)
+        progress.advance(task)  # pyright: ignore[reportAny]
         return Row(
             bench.category,
             bench.name,

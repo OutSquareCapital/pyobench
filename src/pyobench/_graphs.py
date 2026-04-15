@@ -22,11 +22,12 @@ CatFilter = Annotated[
 def plot_relative(categories: CatFilter = None) -> None:
     """Plot category performance evolution relative to first observation."""
     return (
-        Data.db.results.scan()
+        Data.db.results
+        .scan()
         .pipe(
-            lambda lf: lf.filter(nw.col("category").is_in(categories))
-            if categories
-            else lf
+            lambda lf: (
+                lf.filter(nw.col("category").is_in(categories)) if categories else lf
+            )
         )
         .select(
             "name",
@@ -35,7 +36,8 @@ def plot_relative(categories: CatFilter = None) -> None:
             "timestamp",
             nw.col("median").over("name", "size", "git_hash").alias("median"),
             "size",
-            nw.col("timestamp")
+            nw
+            .col("timestamp")
             .rank(method="dense")
             .cast(nw.Int64)
             .alias("observation"),
@@ -47,15 +49,18 @@ def plot_relative(categories: CatFilter = None) -> None:
         .pl(lazy=True)
         .with_columns(pl.col("median").pipe(_rel_time))
         .with_columns(  # TODO: move those columns as new values for relative groups. maybe lit for each agg + 2 unpivots?
-            pl.col("relative")
+            pl
+            .col("relative")
             .median()
             .over("observation", "size", "name", "category")
             .alias("median_over_size"),
-            pl.col("relative")
+            pl
+            .col("relative")
             .median()
             .over("observation", "name", "category")
             .alias("median_over_name"),
-            pl.col("relative")
+            pl
+            .col("relative")
             .median()
             .over("observation", "category")
             .alias("median_over_category"),
@@ -74,7 +79,7 @@ def _rel_time(expr: pl.Expr) -> pl.Expr:
 
 
 def _line_rel(df: pl.DataFrame) -> go.Figure:
-    return px.line(
+    return px.line(  # pyright: ignore[reportUnknownMemberType]
         df,
         x="observation",
         y="relative",
